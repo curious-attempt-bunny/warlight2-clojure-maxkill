@@ -25,6 +25,10 @@
     [defending_armies]
     (nth (concat [0 2 3] (iterate (partial + 2) 5)) defending_armies))
 
+(defn armies_to_defend
+    [attacking_armies]
+    (nth (concat [0 0 2] (interleave (drop 3 (range)) (drop 3 (range)))) attacking_armies))
+
 (defn attackers_killed
     [defending_armies]
     (java.lang.Math/round (+
@@ -41,7 +45,7 @@
 
 (defn enemy?
     [region]
-    (= :enemy (:owner region)))
+    (= :them (:owner region)))
 
 (defn neutral?
     [region]
@@ -50,6 +54,12 @@
 (defn neighbours
     [state region]
     (map (fn [region_id] (get-in state [:regions region_id])) (:neighbours region)))
+
+(defn border?
+    [state region]
+    (and
+        (ours? region)
+        (some (comp ours?) (neighbours state region))))
 
 (defn super_region
     [state region]
@@ -63,12 +73,38 @@
 
 ;; ----- placement and attacking
 
+(defn army_placement
+    [[state placements] region]
+    (let [neighbours          (neighbours state region)
+          enemy               (filter enemy? neighbours)
+          enemy-armies        (map :armies enemy)
+          max-enemy-armies    (apply max (conj enemy-armies 0))
+          our-armies          (:armies region)
+          enemy-income        5 ; assumption
+          attacking-armies    (+ max-enemy-armies enemy-income)
+          minimum-defence     (armies_to_defend attacking-armies)
+          armies_to_place     (min
+                                (:starting_armies state)
+                                (max 0 (- minimum-defence our-armies)))
+          placement           {:region region :armies armies_to_place}]
+        ; (bot/log (str "Place " armies_to_place " at region " (:id region)))
+        ; (bot/log (str "  enemy neighbours " (pr-str (map :id enemy))))
+        ; (bot/log minimum-defence)
+        (if (or (empty? enemy) (zero? armies_to_place))
+            [state placements]
+            (let [state (update-in state [:starting_armies] #(- % armies_to_place))]
+                (bot/log (str "Placing " armies_to_place " at region " (:id region) " to defend against " max-enemy-armies "-" attacking-armies " armies from one of " (pr-str (map :id enemy))))
+                [state (conj placements placement)]))))
+
 (defn place_armies
     [state]
-    (let [regions   (filter ours? (regions state))
-          region    (rand-nth regions)
-          placement {:region region :armies (:starting_armies state)}]
-        [placement]))
+    (let [border-regions     (filter (partial border? state) (regions state))
+          [state placements] (reduce army_placement [state []] border-regions)
+          final_region       (or (:from (first placements)) (first border-regions) (first (filter ours? (regions state))))
+          final_placement    {:region final_region :armies (:starting_armies state)}]
+        (if (zero? (:starting_armies state))
+            placements
+            (conj placements final_placement))))
 
 (defn random_movement
     [state region]
