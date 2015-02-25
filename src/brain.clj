@@ -73,15 +73,13 @@
 
 ;; ----- placement and attacking
 
-(defn army_placement
+(defn placement_to_defend
     [[state placements] region]
     (let [neighbours          (neighbours state region)
           enemy               (filter enemy? neighbours)
           enemy-armies        (map :armies enemy)
-          max-enemy-armies    (apply max (conj enemy-armies 0))
+          attacking-armies    (apply max (conj enemy-armies 0))
           our-armies          (:armies region)
-          enemy-income        5 ; assumption
-          attacking-armies    (+ max-enemy-armies enemy-income)
           minimum-defence     (armies_to_defend attacking-armies)
           armies_to_place     (min
                                 (:starting_armies state)
@@ -93,15 +91,16 @@
         (if (or (empty? enemy) (zero? armies_to_place))
             [state placements]
             (let [state (update-in state [:starting_armies] #(- % armies_to_place))]
-                (bot/log (str "Placing " armies_to_place " at region " (:id region) " to defend against " max-enemy-armies "-" attacking-armies " armies from one of " (pr-str (map :id enemy))))
+                (bot/log (str "Placing " armies_to_place " at region " (:id region) " to defend against " attacking-armies " armies from one of " (pr-str (map :id enemy))))
                 [state (conj placements placement)]))))
 
 (defn place_armies
     [state]
     (let [border-regions     (filter (partial border? state) (regions state))
-          [state placements] (reduce army_placement [state []] border-regions)
+          [state placements] (reduce placement_to_defend [state []] border-regions)
           final_region       (or (:from (first placements)) (first border-regions) (first (filter ours? (regions state))))
           final_placement    {:region final_region :armies (:starting_armies state)}]
+
         (if (zero? (:starting_armies state))
             placements
             (conj placements final_placement))))

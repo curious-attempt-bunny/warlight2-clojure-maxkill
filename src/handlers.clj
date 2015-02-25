@@ -178,7 +178,7 @@
                 (fn [state region_id]
                     (assoc-in state
                         [:regions region_id :last-placement]
-                        0))
+                        2)) ; assume 2 reinforcements unless there is other evidence
                 next-state
                 (keys (:regions state)))
             (partition 4 args))))
