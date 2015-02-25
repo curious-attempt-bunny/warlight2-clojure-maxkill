@@ -138,13 +138,20 @@
 (defn update_map
     [state & args]
     (reduce
-        (fn [state [region_id owner armies]]
-            (let [region_id (Integer/parseInt region_id)
-                  armies    (Integer/parseInt armies)
-                  owner     (owner_symbol state owner)]
-                (assoc-in state
-                    [:regions region_id :owner]
-                    owner)))
+        (fn [state [_region_id _owner _armies]]
+            (let [region_id (Integer/parseInt _region_id)
+                  armies    (Integer/parseInt _armies)
+                  owner     (owner_symbol state _owner)
+                  addition  (if (not= owner :them)
+                                0
+                                (get-in state [:regions region_id :last-placement] 0))]
+                (-> state
+                    (assoc-in
+                        [:regions region_id :owner]
+                        owner)
+                    (assoc-in
+                        [:regions region_id :armies]
+                        (+ armies addition)))))
         (reduce
             (fn [state region_id]
                 (if (= :us (get-in state [:regions region_id :owner]))
@@ -156,18 +163,33 @@
             (keys (:regions state)))
         (partition 3 args)))
 
-; doesn't do anything (yet)
 (defn opponent_moves
     [state & args]
-    state)
+    (let [next-state (update-in state [:round] inc)]
+        (bot/log (str "Round: " (get-in next-state [:round])))
+        (reduce
+            (fn [state [_ type region_id armies]]
+                (if (not= type "place_armies")
+                    state
+                    (update-in state
+                        [:regions (Integer/parseInt region_id) :last-placement]
+                        (partial + (Integer/parseInt armies)))))
+            (reduce
+                (fn [state region_id]
+                    (assoc-in state
+                        [:regions region_id :last-placement]
+                        0))
+                next-state
+                (keys (:regions state)))
+            (partition 4 args))))
 
-; doesn't do anything
 (defn Round
     [state number]
-    state)
+    (assoc state :round (Integer/parseInt number)))
 
 (defn go_place_armies
     [state timebank]
+    ; (bot/log
     (let [moves (brain/place_armies state)
           state (assoc state :last-placement moves)]
         (if (empty? moves)
@@ -186,6 +208,7 @@
                         (partial + armies)))
                     state
                     moves)))))
+    ; )
 
 (defn go_attack_transfer
     [state timebank]
