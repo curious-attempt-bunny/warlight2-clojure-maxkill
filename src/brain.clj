@@ -75,7 +75,8 @@
 
 (defn placement_to_defend
     [[state placements] region]
-    (let [neighbours          (neighbours state region)
+    (let [region              (get-in state [:regions (:id region)])
+          neighbours          (neighbours state region)
           enemy               (filter enemy? neighbours)
           enemy-armies        (map :armies enemy)
           attacking-armies    (apply max (conj enemy-armies 0))
@@ -90,14 +91,40 @@
         ; (bot/log minimum-defence)
         (if (or (empty? enemy) (zero? armies_to_place))
             [state placements]
-            (let [state (update-in state [:starting_armies] #(- % armies_to_place))]
+            (let [state (update-in state [:starting_armies] #(- % armies_to_place))
+                  state (update-in state [:regions (:id region) :armies] (partial + armies_to_place))]
                 (bot/log (str "Placing " armies_to_place " at region " (:id region) " to defend against " attacking-armies " armies from one of " (pr-str (map :id enemy))))
                 [state (conj placements placement)]))))
+
+(defn placement_to_attack
+    [[state placements] region]
+    (let [region              (get-in state [:regions (:id region)])
+          neighbours          (neighbours state region)
+          enemy               (filter enemy? neighbours)
+          enemy-armies        (map :armies enemy)
+          defending-armies    (apply max (conj enemy-armies 0))
+          our-armies          (:armies region)
+          minimum-attack      (armies_to_kill defending-armies)
+          armies_to_place     (min
+                                (:starting_armies state)
+                                (max 0 (- minimum-attack our-armies)))
+          placement           {:region region :armies armies_to_place}]
+        ; (bot/log (str "Place " armies_to_place " at region " (:id region)))
+        ; (bot/log (str "  enemy neighbours " (pr-str (map :id enemy))))
+        ; (bot/log minimum-defence)
+        (if (or (empty? enemy) (zero? armies_to_place))
+            [state placements]
+            (let [state (update-in state [:starting_armies] #(- % armies_to_place))
+                  state (update-in state [:regions (:id region) :armies] (partial + armies_to_place))]
+                (bot/log (str "Placing " armies_to_place " at region " (:id region) " to attack " defending-armies " armies with " minimum-attack " (" (+ armies_to_place our-armies) ") at one of " (pr-str (map :id enemy))))
+                [state (conj placements placement)]))))
+
 
 (defn place_armies
     [state]
     (let [border-regions     (filter (partial border? state) (regions state))
           [state placements] (reduce placement_to_defend [state []] border-regions)
+          [state placements] (reduce placement_to_attack [state placements] border-regions) 
           final_region       (or (:from (first placements)) (first border-regions) (first (filter ours? (regions state))))
           final_placement    {:region final_region :armies (:starting_armies state)}]
 
