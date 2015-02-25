@@ -151,6 +151,9 @@
                         owner)
                     (assoc-in
                         [:regions region_id :armies]
+                        armies)
+                    (assoc-in
+                        [:regions region_id :projected-armies]
                         (+ armies addition)))))
         (reduce
             (fn [state region_id]

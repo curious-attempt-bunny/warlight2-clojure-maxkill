@@ -61,6 +61,12 @@
         (ours? region)
         (some (comp ours?) (neighbours state region))))
 
+(defn border-enemy?
+    [state region]
+    (and
+        (ours? region)
+        (some enemy? (neighbours state region))))
+
 (defn super_region
     [state region]
     (get-in state [:super_regions (:super_region_id region)]))
@@ -101,7 +107,7 @@
     (let [region              (get-in state [:regions (:id region)])
           neighbours          (neighbours state region)
           enemy               (filter enemy? neighbours)
-          enemy-armies        (map :armies enemy)
+          enemy-armies        (map :projected-armies enemy)
           defending-armies    (apply max (conj enemy-armies 0))
           our-armies          (:armies region)
           minimum-attack      (armies_to_kill defending-armies)
@@ -140,9 +146,28 @@
           movement    {:from region :to destination :armies armies}]
         movement))
 
+(defn movement_to_attack
+    [[state movements] region]
+    (let [region              (get-in state [:regions (:id region)])
+          neighbours          (neighbours state region)
+          enemies             (filter enemy? neighbours)
+          strongest-enemy     (apply max-key (concat [:armies] enemies))
+          defending-armies    (:projected-armies strongest-enemy)
+          our-armies          (:armies region)
+          attacking-armies    (max (armies_to_kill defending-armies) (dec our-armies))
+          movement            {:from region :to strongest-enemy :armies attacking-armies}]
+        (bot/log (str "Considering attacking from " (:id region)))
+        (doseq [enemy enemies]
+            (bot/log (str "  " (:id enemy) " - armies " (:armies enemy))))
+        (if (> attacking-armies (dec our-armies))
+            [state movements]
+            (let [state (update-in state [:regions (:id region) :armies] (partial - attacking-armies))
+                  state (assoc-in state [:regions (:id strongest-enemy) :owner] :us)]
+                (bot/log (str "Attacking from " (:id region) " to " (:id strongest-enemy) " with " attacking-armies))
+                [state (conj movements movement)]))))
+
 (defn attack
     [state] 
-    (->> (regions state)
-        (filter ours?)
-        (filter (fn [region] (> (:armies region) 1)))
-        (map (partial random_movement state))))
+    (let [border-regions  (filter (partial border-enemy? state) (regions state))
+          [state moves]   (reduce movement_to_attack [state []] border-regions)]
+        moves))
